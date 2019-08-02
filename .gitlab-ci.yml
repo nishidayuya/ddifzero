@@ -9,13 +9,23 @@ variables:
   DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
 
+before_script:
+  - docker version
+  - docker-compose version
+  - apk add --no-cache git coreutils
+  - wget -O /usr/local/bin/git-restore-timestamp https://raw.githubusercontent.com/nishidayuya/git-restore-timestamp/master/exe/git-restore-timestamp
+  - chmod a+x /usr/local/bin/git-restore-timestamp
+  - git restore-timestamp
+
 build:
+  stage: build
   artifacts:
     paths:
       - outputs/
+  cache:
+    paths:
+      - mruby/
   script:
-    - docker version
-    - docker-compose version
     - docker-compose run compile
     - mkdir -pv outputs/
     - |
@@ -26,3 +36,19 @@ build:
         mkdir -pv outputs/$target/
         cp -av mruby/build/$target/bin/* outputs/$target/
       done
+
+mtest:
+  stage: test
+  cache:
+    paths:
+      - mruby/
+  script:
+    - docker-compose run mtest
+
+bintest:
+  stage: test
+  cache:
+    paths:
+      - mruby/
+  script:
+    - docker-compose run bintest
