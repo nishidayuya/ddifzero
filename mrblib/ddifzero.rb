@@ -1,7 +1,6 @@
+module Ddifzero
+end
+
 def __main__(argv)
-  if argv[1] == "version"
-    puts "v#{Ddifzero::VERSION}"
-  else
-    puts "Hello World"
-  end
+  Ddifzero::Cli.run(argv)
 end
