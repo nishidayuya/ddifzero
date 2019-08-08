@@ -5,9 +5,16 @@ image:
 services:
   - docker:19.03.0-dind
 
+stages:
+  - build
+  - test
+  - release
+
 variables:
   DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
+  PACKAGE_PREFIX: ddifzero
+  API_REPOSITORY_URI: https://api.github.com/repos/nishidayuya/ddifzero
 
 before_script:
   - docker version
@@ -52,3 +59,60 @@ bintest:
       - mruby/
   script:
     - docker-compose run bintest
+
+release:
+  stage: release
+  only:
+    variables:
+      - $CI_COMMIT_TAG
+  cache:
+    paths:
+      - mruby/
+  script:
+    - |
+      set -eux
+      mkdir current_release
+      apk add --no-cache tar gzip zip
+      for d in mruby/build/*/bin
+      do
+        target=$(echo $d | xargs dirname | xargs basename)
+        if test "$target" = host
+        then
+          continue
+        fi
+        echo $target
+        target_name=$PACKAGE_PREFIX-$CI_COMMIT_TAG-$target
+        mkdir -pv outputs/$target_name/
+        cp -av mruby/build/$target/bin/* outputs/$target_name/
+        cd outputs/
+        case $target in
+          *mingw*)
+            zip -9r ../current_release/$target_name.zip $target_name
+            ;;
+          *)
+            tar cf - $target_name |
+            gzip -9c > ../current_release/$target_name.tar.gz
+            ;;
+          esac
+        cd ../
+      done
+    - |
+      set -eux
+      apk add --no-cache curl jq
+      assets_url=$(
+        curl --request POST \
+          --header "Authorization: token $GHU_TOKEN" \
+          --data '{"tag_name": "'$CI_COMMIT_TAG'","target_commitish": "'$CI_COMMIT_SHA'"}' \
+          "$API_REPOSITORY_URI"/releases |
+        jq '.upload_url | sub("{.*"; "")' |
+        sed -e 's/"//g'
+      )
+      for f in current_release/*
+      do
+        curl --request POST \
+          --header "Authorization: token $GHU_TOKEN" \
+          --header "Content-Type: application/octet-stream" \
+          --upload-file $f \
+          "$assets_url?name=$(basename $f)" |
+        jq .
+      done
